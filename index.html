@@ -7,39 +7,38 @@
   body {
     margin: 0;
     font-family: 'Segoe UI', sans-serif;
-    background: linear-gradient(135deg, #0f172a, #1e3a8a, #2563eb);
+    background: #0a0f1e;
     color: white;
     text-align: center;
     min-height: 100vh;
   }
-  header { padding: 40px 20px 10px; }
-  h1 { font-size: 2.5em; margin: 0; letter-spacing: 1px; }
-  p.subtitle { color: #93c5fd; margin-top: 8px; }
-  #gameContainer { margin: 30px auto; max-width: 650px; perspective: 800px; }
+  header { padding: 30px 20px 5px; }
+  h1 { font-size: 2.3em; margin: 0; letter-spacing: 1px; }
+  p.subtitle { color: #93c5fd; margin-top: 6px; }
+  #gameContainer { margin: 20px auto; max-width: 700px; }
   canvas {
-    background: linear-gradient(#87ceeb, #5fa85f);
-    border-radius: 12px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
     cursor: crosshair;
   }
-  #status { margin-top: 15px; font-size: 1.3em; color: #bfdbfe; min-height: 30px; }
-  #score { margin-top: 5px; font-size: 1.1em; color: #fde68a; }
-  .hint { color: #93c5fd; font-size: 0.9em; margin-top: 5px; }
-  footer { margin-top: 40px; padding: 20px; color: #93c5fd; font-size: 0.9em; }
+  #status { margin-top: 14px; font-size: 1.3em; color: #fef08a; min-height: 30px; font-weight: bold; }
+  #score { margin-top: 4px; font-size: 1.05em; color: #bfdbfe; }
+  .hint { color: #64748b; font-size: 0.85em; margin-top: 4px; }
+  footer { margin-top: 30px; padding: 20px; color: #475569; font-size: 0.85em; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>⚽ Sikka Twins Penalty Shootout</h1>
-  <p class="subtitle">Click inside the goal to strike the ball</p>
+  <p class="subtitle">Click and hold in the goal to set power, release to shoot</p>
 </header>
 
 <div id="gameContainer">
-  <canvas id="game" width="650" height="400"></canvas>
-  <div id="status">Round 1 - Click the goal to shoot!</div>
+  <canvas id="game" width="700" height="450"></canvas>
+  <div id="status">Round 1 - Hold click to aim, release to shoot!</div>
   <div id="score">Goals: 0 | Saves: 0 | Round: 1 / 5</div>
-  <div class="hint">Aim for the corners, the keeper is smart</div>
+  <div class="hint">Corners are harder to save. Keeper reads your power too.</div>
 </div>
 
 <footer>Made with 💙 by Veer & Angad</footer>
@@ -49,113 +48,245 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const scoreEl = document.getElementById('score');
+const W = canvas.width, H = canvas.height;
 
-const goal = { x: 150, y: 60, w: 350, h: 150 };
-let round = 1, maxRounds = 5, goals = 0, saves = 0;
-let ballAnimating = false;
-let ball = { x: 325, y: 340, r: 14 };
-let keeper = { x: 325, y: 140, w: 40, h: 60, targetX: 325, diving: false };
-let ballPath = null, ballProgress = 0;
-let gameEnded = false;
+const goal = { x: 170, y: 70, w: 360, h: 150 };
+let round = 1, maxRounds = 5, goals = 0, saves = 0, gameEnded = false;
 
-function drawField() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+let ball = { x: 350, y: 400, r: 15, rot: 0 };
+let keeper = { x: 350, y: 150, targetX: 350, diving: false, diveDir: 0, diveT: 0 };
+let ballAnimating = false, ballPath = null, ballProgress = 0;
+let aiming = false, aimX = 350, aimY = 150, power = 0;
+let netSag = 0, netSagTarget = 0;
 
-  // Sky/grass already via CSS background, draw pitch lines
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(50, 250, 550, 130);
+// crowd dots (fixed random positions, generated once)
+let crowd = [];
+for (let i = 0; i < 200; i++) {
+  crowd.push({
+    x: Math.random() * W,
+    y: 15 + Math.random() * 35,
+    c: ['#fde047','#f87171','#60a5fa','#34d399','#f9fafb'][Math.floor(Math.random()*5)]
+  });
+}
+
+function drawStadium() {
+  // sky
+  let sky = ctx.createLinearGradient(0, 0, 0, 60);
+  sky.addColorStop(0, '#1e293b');
+  sky.addColorStop(1, '#334155');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, 60);
+
+  // crowd
+  crowd.forEach(p => {
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x, p.y, 3, 4);
+  });
+
+  // floodlights
+  [60, W - 60].forEach(fx => {
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath();
+    ctx.arc(fx, 20, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(226,232,240,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(fx, 20);
+    ctx.lineTo(fx - 40, 200);
+    ctx.lineTo(fx + 40, 200);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // pitch with mowing stripes
+  let pitchY = 60;
+  for (let i = 0; i < 10; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#3f9142' : '#357a38';
+    ctx.fillRect(0, pitchY + i * ((H - pitchY) / 10), W, (H - pitchY) / 10 + 1);
+  }
+
+  // penalty box lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(90, 260, 520, 190);
   ctx.beginPath();
-  ctx.arc(325, 340, 60, Math.PI, 2 * Math.PI);
+  ctx.arc(350, 430, 70, Math.PI, 2 * Math.PI);
   ctx.stroke();
-
-  // Goal (3D-ish trapezoid perspective)
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.moveTo(goal.x, goal.y + goal.h);
-  ctx.lineTo(goal.x, goal.y);
-  ctx.lineTo(goal.x + goal.w, goal.y);
-  ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
-  ctx.stroke();
+  ctx.arc(350, 400, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+}
 
-  // net lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+function drawGoal() {
+  const postW = 6;
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(goal.x - postW, goal.y - postW, postW, goal.h + postW);
+  ctx.fillRect(goal.x + goal.w, goal.y - postW, postW, goal.h + postW);
+  ctx.fillRect(goal.x - postW, goal.y - postW, goal.w + postW * 2, postW);
+
+  // net with sag effect
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 10; i++) {
-    let x = goal.x + (goal.w / 10) * i;
+  const cols = 14, rows = 8;
+  for (let i = 0; i <= cols; i++) {
+    let x = goal.x + (goal.w / cols) * i;
+    let sagAmount = netSag * Math.sin((i / cols) * Math.PI);
     ctx.beginPath();
     ctx.moveTo(x, goal.y);
-    ctx.lineTo(x, goal.y + goal.h);
+    ctx.quadraticCurveTo(x + sagAmount * 0.3, goal.y + goal.h * 0.6, x + sagAmount, goal.y + goal.h);
     ctx.stroke();
   }
-  for (let j = 0; j <= 5; j++) {
-    let y = goal.y + (goal.h / 5) * j;
+  for (let j = 0; j <= rows; j++) {
+    let y = goal.y + (goal.h / rows) * j;
     ctx.beginPath();
     ctx.moveTo(goal.x, y);
-    ctx.lineTo(goal.x + goal.w, y);
+    for (let i = 0; i <= cols; i++) {
+      let x = goal.x + (goal.w / cols) * i;
+      let sagAmount = netSag * Math.sin((i / cols) * Math.PI) * (j / rows);
+      ctx.lineTo(x + sagAmount, y + sagAmount * 0.2);
+    }
     ctx.stroke();
   }
+  netSag += (netSagTarget - netSag) * 0.2;
+}
 
-  // keeper (with dive tilt for 3D feel)
+function drawKeeper() {
   ctx.save();
   ctx.translate(keeper.x, keeper.y);
   if (keeper.diving) {
-    let tilt = keeper.targetX > 325 ? 0.6 : (keeper.targetX < 325 ? -0.6 : 0);
-    ctx.rotate(tilt);
+    ctx.rotate(keeper.diveDir * keeper.diveT * 0.9);
+    ctx.translate(keeper.diveDir * keeper.diveT * 55, keeper.diveT * 20);
   }
+  // shirt
   ctx.fillStyle = '#facc15';
-  ctx.fillRect(-keeper.w / 2, -keeper.h / 2, keeper.w, keeper.h);
+  ctx.fillRect(-16, -25, 32, 45);
+  // shorts
   ctx.fillStyle = '#1e293b';
+  ctx.fillRect(-16, 15, 32, 12);
+  // arms
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  let armAngle = keeper.diving ? keeper.diveDir * 1.4 : 0.3;
   ctx.beginPath();
-  ctx.arc(0, -keeper.h / 2 - 8, 10, 0, Math.PI * 2);
+  ctx.moveTo(-14, -18);
+  ctx.lineTo(-14 - Math.cos(armAngle) * 22, -18 - Math.sin(1.2) * 22 * (keeper.diving?1:0.4) - (keeper.diving?0:15));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(14, -18);
+  ctx.lineTo(14 + Math.cos(armAngle) * 22, -18 - Math.sin(1.2) * 22 * (keeper.diving?1:0.4) - (keeper.diving?0:15));
+  ctx.stroke();
+  // legs
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(-8, 27);
+  ctx.lineTo(-8, 45);
+  ctx.moveTo(8, 27);
+  ctx.lineTo(8, 45);
+  ctx.stroke();
+  // head
+  ctx.fillStyle = '#d97706';
+  ctx.beginPath();
+  ctx.arc(0, -33, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawBall() {
+  let depthT = (400 - ball.y) / 330;
+  let ballR = Math.max(ball.r * (1 - depthT * 0.65), 4);
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, 405, ballR * 1.1, ballR * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ball body with gradient for sphere shading
+  let grad = ctx.createRadialGradient(ball.x - ballR*0.3, ball.y - ballR*0.3, 1, ball.x, ball.y, ballR);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(1, '#c7cdd6');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ballR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // pentagon pattern (rotating)
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ball.rot);
+  ctx.fillStyle = '#1e293b';
+  for (let i = 0; i < 5; i++) {
+    let a = (i / 5) * Math.PI * 2;
+    let px = Math.cos(a) * ballR * 0.5;
+    let py = Math.sin(a) * ballR * 0.5;
+    ctx.beginPath();
+    ctx.arc(px, py, ballR * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, ballR * 0.16, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
 
-  // ball shadow (3D depth cue)
-  let shadowScale = 1 - (340 - ball.y) / 340 * 0.7;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+function drawAimMeter() {
+  if (!aiming) return;
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(ball.x, 345, 14 * Math.max(shadowScale, 0.3), 5 * Math.max(shadowScale, 0.3), 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ball with size scaling for depth
-  let ballR = ball.r * (1 - (340 - ball.y) / 500);
-  ctx.fillStyle = 'white';
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, Math.max(ballR, 4), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 1;
+  ctx.moveTo(ball.x, ball.y);
+  ctx.lineTo(aimX, aimY);
   ctx.stroke();
+
+  ctx.fillStyle = '#fde047';
+  ctx.beginPath();
+  ctx.arc(aimX, aimY, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // power bar
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(20, H - 40, 120, 16);
+  ctx.fillStyle = power > 80 ? '#ef4444' : '#22c55e';
+  ctx.fillRect(20, H - 40, power * 1.2, 16);
+  ctx.strokeStyle = 'white';
+  ctx.strokeRect(20, H - 40, 120, 16);
+  ctx.fillStyle = 'white';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('POWER', 20, H - 45);
 }
 
 function animateBall() {
-  if (!ballPath) return;
-  ballProgress += 0.03;
+  ballProgress += 0.025 + power * 0.0003;
   if (ballProgress >= 1) {
     ballProgress = 1;
     finishShot();
   }
   let t = ballProgress;
-  ball.x = ballPath.startX + (ballPath.endX - ballPath.startX) * t;
-  ball.y = ballPath.startY + (ballPath.endY - ballPath.startY) * t;
+  let ease = t;
+  ball.x = ballPath.startX + (ballPath.endX - ballPath.startX) * ease;
+  ball.y = ballPath.startY + (ballPath.endY - ballPath.startY) * ease;
+  ball.rot += 0.4 + power * 0.01;
 
-  // keeper dive animation toward target
-  keeper.x += (keeper.targetX - keeper.x) * 0.15;
+  keeper.diveT = Math.min(keeper.diveT + 0.08, 1);
 }
 
 function finishShot() {
   ballAnimating = false;
-  let dx = Math.abs(ball.x - keeper.x);
-  let saved = dx < 45 && ball.y < goal.y + goal.h + 20;
+  let dx = Math.abs(ballPath.endX - keeper.x - keeper.diveDir * keeper.diveT * 55);
+  let saved = dx < 42 && ballPath.endY < goal.y + goal.h + 15 && ballPath.endY > goal.y - 10;
 
   if (saved) {
     saves++;
-    statusEl.textContent = "🧤 SAVED! Great reflexes by the keeper.";
+    statusEl.textContent = "🧤 SAVED! The keeper got a hand to it!";
+    netSagTarget = 0;
   } else {
     goals++;
-    statusEl.textContent = "⚽ GOAL! Top corner strike!";
+    statusEl.textContent = "⚽ GOAL! Back of the net!";
+    netSagTarget = 18;
   }
 
   round++;
@@ -164,278 +295,73 @@ function finishShot() {
   if (round > maxRounds) {
     gameEnded = true;
     setTimeout(() => {
-      statusEl.textContent = `Game Over! Final Score - Goals: ${goals}, Saves: ${saves}. Click to play again.`;
-    }, 800);
+      statusEl.textContent = `Final Whistle! Goals: ${goals}, Saves: ${saves}. Click to play again.`;
+    }, 900);
   } else {
-    setTimeout(resetBall, 1000);
+    setTimeout(resetBall, 1200);
   }
 }
 
 function resetBall() {
-  ball.x = 325; ball.y = 340;
-  keeper.x = 325; keeper.diving = false;
-  ballPath = null; ballProgress = 0;
-  statusEl.textContent = `Round ${round} - Click the goal to shoot!`;
+  ball.x = 350; ball.y = 400; ball.rot = 0;
+  keeper.x = 350; keeper.diving = false; keeper.diveT = 0; keeper.diveDir = 0;
+  ballPath = null; ballProgress = 0; netSagTarget = 0;
+  statusEl.textContent = `Round ${round} - Hold click to aim, release to shoot!`;
 }
 
 function updateScore() {
   scoreEl.textContent = `Goals: ${goals} | Saves: ${saves} | Round: ${Math.min(round, maxRounds)} / ${maxRounds}`;
 }
 
-canvas.addEventListener('click', (e) => {
-  if (ballAnimating) return;
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
 
+canvas.addEventListener('mousedown', (e) => {
+  if (ballAnimating) return;
   if (gameEnded) {
     round = 1; goals = 0; saves = 0; gameEnded = false;
-    updateScore();
-    resetBall();
+    updateScore(); resetBall();
     return;
   }
+  const p = getPos(e);
+  if (p.x < goal.x || p.x > goal.x + goal.w || p.y < goal.y || p.y > goal.y + goal.h) return;
+  aiming = true;
+  aimX = p.x; aimY = p.y;
+  power = 0;
+});
 
-  const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
+canvas.addEventListener('mousemove', (e) => {
+  if (!aiming) return;
+  const p = getPos(e);
+  aimX = p.x; aimY = p.y;
+});
 
-  if (clickX < goal.x || clickX > goal.x + goal.w || clickY < goal.y || clickY > goal.y + goal.h) {
-    return;
-  }
+canvas.addEventListener('mouseup', () => {
+  if (!aiming) return;
+  aiming = false;
+  power = Math.min(power + 40, 100);
 
   ballAnimating = true;
-  ballPath = { startX: ball.x, startY: ball.y, endX: clickX, endY: clickY };
+  ballPath = { startX: ball.x, startY: ball.y, endX: aimX, endY: aimY };
   ballProgress = 0;
 
-  // keeper reacts: guesses a target somewhat near the shot, sometimes wrong
-  let guessError = (Math.random() - 0.5) * 120;
-  keeper.targetX = clickX + guessError;
+  let guessError = (Math.random() - 0.5) * (140 - power * 0.6);
+  keeper.targetX = aimX + guessError;
+  keeper.diveDir = keeper.targetX > keeper.x ? 1 : -1;
   keeper.diving = true;
 });
 
-function loop() {
-  if (ballAnimating) animateBall();
-  drawField();
-  requestAnimationFrame(loop);
-}
-loop();
-</script>
-
-</body>
-</html>
-EOFcat > index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Sikka Twins - Penalty Shootout</title>
-<style>
-  body {
-    margin: 0;
-    font-family: 'Segoe UI', sans-serif;
-    background: linear-gradient(135deg, #0f172a, #1e3a8a, #2563eb);
-    color: white;
-    text-align: center;
-    min-height: 100vh;
-  }
-  header { padding: 40px 20px 10px; }
-  h1 { font-size: 2.5em; margin: 0; letter-spacing: 1px; }
-  p.subtitle { color: #93c5fd; margin-top: 8px; }
-  #gameContainer { margin: 30px auto; max-width: 650px; perspective: 800px; }
-  canvas {
-    background: linear-gradient(#87ceeb, #5fa85f);
-    border-radius: 12px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-    cursor: crosshair;
-  }
-  #status { margin-top: 15px; font-size: 1.3em; color: #bfdbfe; min-height: 30px; }
-  #score { margin-top: 5px; font-size: 1.1em; color: #fde68a; }
-  .hint { color: #93c5fd; font-size: 0.9em; margin-top: 5px; }
-  footer { margin-top: 40px; padding: 20px; color: #93c5fd; font-size: 0.9em; }
-</style>
-</head>
-<body>
-
-<header>
-  <h1>⚽ Sikka Twins Penalty Shootout</h1>
-  <p class="subtitle">Click inside the goal to strike the ball</p>
-</header>
-
-<div id="gameContainer">
-  <canvas id="game" width="650" height="400"></canvas>
-  <div id="status">Round 1 - Click the goal to shoot!</div>
-  <div id="score">Goals: 0 | Saves: 0 | Round: 1 / 5</div>
-  <div class="hint">Aim for the corners, the keeper is smart</div>
-</div>
-
-<footer>Made with 💙 by Veer & Angad</footer>
-
-<script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const statusEl = document.getElementById('status');
-const scoreEl = document.getElementById('score');
-
-const goal = { x: 150, y: 60, w: 350, h: 150 };
-let round = 1, maxRounds = 5, goals = 0, saves = 0;
-let ballAnimating = false;
-let ball = { x: 325, y: 340, r: 14 };
-let keeper = { x: 325, y: 140, w: 40, h: 60, targetX: 325, diving: false };
-let ballPath = null, ballProgress = 0;
-let gameEnded = false;
-
-function drawField() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Sky/grass already via CSS background, draw pitch lines
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(50, 250, 550, 130);
-  ctx.beginPath();
-  ctx.arc(325, 340, 60, Math.PI, 2 * Math.PI);
-  ctx.stroke();
-
-  // Goal (3D-ish trapezoid perspective)
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(goal.x, goal.y + goal.h);
-  ctx.lineTo(goal.x, goal.y);
-  ctx.lineTo(goal.x + goal.w, goal.y);
-  ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
-  ctx.stroke();
-
-  // net lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 10; i++) {
-    let x = goal.x + (goal.w / 10) * i;
-    ctx.beginPath();
-    ctx.moveTo(x, goal.y);
-    ctx.lineTo(x, goal.y + goal.h);
-    ctx.stroke();
-  }
-  for (let j = 0; j <= 5; j++) {
-    let y = goal.y + (goal.h / 5) * j;
-    ctx.beginPath();
-    ctx.moveTo(goal.x, y);
-    ctx.lineTo(goal.x + goal.w, y);
-    ctx.stroke();
-  }
-
-  // keeper (with dive tilt for 3D feel)
-  ctx.save();
-  ctx.translate(keeper.x, keeper.y);
-  if (keeper.diving) {
-    let tilt = keeper.targetX > 325 ? 0.6 : (keeper.targetX < 325 ? -0.6 : 0);
-    ctx.rotate(tilt);
-  }
-  ctx.fillStyle = '#facc15';
-  ctx.fillRect(-keeper.w / 2, -keeper.h / 2, keeper.w, keeper.h);
-  ctx.fillStyle = '#1e293b';
-  ctx.beginPath();
-  ctx.arc(0, -keeper.h / 2 - 8, 10, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // ball shadow (3D depth cue)
-  let shadowScale = 1 - (340 - ball.y) / 340 * 0.7;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.beginPath();
-  ctx.ellipse(ball.x, 345, 14 * Math.max(shadowScale, 0.3), 5 * Math.max(shadowScale, 0.3), 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ball with size scaling for depth
-  let ballR = ball.r * (1 - (340 - ball.y) / 500);
-  ctx.fillStyle = 'white';
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, Math.max(ballR, 4), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#1e293b';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-}
-
-function animateBall() {
-  if (!ballPath) return;
-  ballProgress += 0.03;
-  if (ballProgress >= 1) {
-    ballProgress = 1;
-    finishShot();
-  }
-  let t = ballProgress;
-  ball.x = ballPath.startX + (ballPath.endX - ballPath.startX) * t;
-  ball.y = ballPath.startY + (ballPath.endY - ballPath.startY) * t;
-
-  // keeper dive animation toward target
-  keeper.x += (keeper.targetX - keeper.x) * 0.15;
-}
-
-function finishShot() {
-  ballAnimating = false;
-  let dx = Math.abs(ball.x - keeper.x);
-  let saved = dx < 45 && ball.y < goal.y + goal.h + 20;
-
-  if (saved) {
-    saves++;
-    statusEl.textContent = "🧤 SAVED! Great reflexes by the keeper.";
-  } else {
-    goals++;
-    statusEl.textContent = "⚽ GOAL! Top corner strike!";
-  }
-
-  round++;
-  updateScore();
-
-  if (round > maxRounds) {
-    gameEnded = true;
-    setTimeout(() => {
-      statusEl.textContent = `Game Over! Final Score - Goals: ${goals}, Saves: ${saves}. Click to play again.`;
-    }, 800);
-  } else {
-    setTimeout(resetBall, 1000);
-  }
-}
-
-function resetBall() {
-  ball.x = 325; ball.y = 340;
-  keeper.x = 325; keeper.diving = false;
-  ballPath = null; ballProgress = 0;
-  statusEl.textContent = `Round ${round} - Click the goal to shoot!`;
-}
-
-function updateScore() {
-  scoreEl.textContent = `Goals: ${goals} | Saves: ${saves} | Round: ${Math.min(round, maxRounds)} / ${maxRounds}`;
-}
-
-canvas.addEventListener('click', (e) => {
-  if (ballAnimating) return;
-
-  if (gameEnded) {
-    round = 1; goals = 0; saves = 0; gameEnded = false;
-    updateScore();
-    resetBall();
-    return;
-  }
-
-  const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
-
-  if (clickX < goal.x || clickX > goal.x + goal.w || clickY < goal.y || clickY > goal.y + goal.h) {
-    return;
-  }
-
-  ballAnimating = true;
-  ballPath = { startX: ball.x, startY: ball.y, endX: clickX, endY: clickY };
-  ballProgress = 0;
-
-  // keeper reacts: guesses a target somewhat near the shot, sometimes wrong
-  let guessError = (Math.random() - 0.5) * 120;
-  keeper.targetX = clickX + guessError;
-  keeper.diving = true;
-});
+setInterval(() => { if (aiming) power = Math.min(power + 3, 100); }, 50);
 
 function loop() {
+  drawStadium();
+  drawGoal();
+  drawKeeper();
   if (ballAnimating) animateBall();
-  drawField();
+  drawBall();
+  drawAimMeter();
   requestAnimationFrame(loop);
 }
 loop();
