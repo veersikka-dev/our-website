@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Sikka Twins</title>
+<title>Sikka Twins - Penalty Shootout</title>
 <style>
   body {
     margin: 0;
@@ -12,56 +12,34 @@
     text-align: center;
     min-height: 100vh;
   }
-  header {
-    padding: 40px 20px 10px;
-  }
-  h1 {
-    font-size: 2.5em;
-    margin: 0;
-    letter-spacing: 1px;
-  }
-  p.subtitle {
-    color: #93c5fd;
-    margin-top: 8px;
-  }
-  #gameContainer {
-    margin: 30px auto;
-    max-width: 600px;
-  }
+  header { padding: 40px 20px 10px; }
+  h1 { font-size: 2.5em; margin: 0; letter-spacing: 1px; }
+  p.subtitle { color: #93c5fd; margin-top: 8px; }
+  #gameContainer { margin: 30px auto; max-width: 650px; perspective: 800px; }
   canvas {
-    background: #dbeafe;
+    background: linear-gradient(#87ceeb, #5fa85f);
     border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    cursor: crosshair;
   }
-  #score {
-    margin-top: 10px;
-    font-size: 1.2em;
-    color: #bfdbfe;
-  }
-  .hint {
-    color: #93c5fd;
-    font-size: 0.9em;
-    margin-top: 5px;
-  }
-  footer {
-    margin-top: 40px;
-    padding: 20px;
-    color: #93c5fd;
-    font-size: 0.9em;
-  }
+  #status { margin-top: 15px; font-size: 1.3em; color: #bfdbfe; min-height: 30px; }
+  #score { margin-top: 5px; font-size: 1.1em; color: #fde68a; }
+  .hint { color: #93c5fd; font-size: 0.9em; margin-top: 5px; }
+  footer { margin-top: 40px; padding: 20px; color: #93c5fd; font-size: 0.9em; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🚀 Hello from the Sikka Twins!</h1>
-  <p class="subtitle">This is our first website, built together.</p>
+  <h1>⚽ Sikka Twins Penalty Shootout</h1>
+  <p class="subtitle">Click inside the goal to strike the ball</p>
 </header>
 
 <div id="gameContainer">
-  <canvas id="game" width="600" height="200"></canvas>
-  <div id="score">Score: 0</div>
-  <div class="hint">Press SPACE to jump</div>
+  <canvas id="game" width="650" height="400"></canvas>
+  <div id="status">Round 1 - Click the goal to shoot!</div>
+  <div id="score">Goals: 0 | Saves: 0 | Round: 1 / 5</div>
+  <div class="hint">Aim for the corners, the keeper is smart</div>
 </div>
 
 <footer>Made with 💙 by Veer & Angad</footer>
@@ -69,94 +47,395 @@
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-let dino = { x: 50, y: 150, w: 30, h: 30, vy: 0, jumping: false };
-let obstacles = [];
-let score = 0;
-let gameOver = false;
-let speed = 5;
+const statusEl = document.getElementById('status');
+const scoreEl = document.getElementById('score');
 
-function spawnObstacle() {
-  obstacles.push({ x: canvas.width, y: 160, w: 20, h: 20 });
-}
+const goal = { x: 150, y: 60, w: 350, h: 150 };
+let round = 1, maxRounds = 5, goals = 0, saves = 0;
+let ballAnimating = false;
+let ball = { x: 325, y: 340, r: 14 };
+let keeper = { x: 325, y: 140, w: 40, h: 60, targetX: 325, diving: false };
+let ballPath = null, ballProgress = 0;
+let gameEnded = false;
 
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    if (gameOver) { resetGame(); return; }
-    if (!dino.jumping) {
-      dino.vy = -10;
-      dino.jumping = true;
-    }
-  }
-});
-
-function resetGame() {
-  dino.y = 150;
-  dino.vy = 0;
-  dino.jumping = false;
-  obstacles = [];
-  score = 0;
-  speed = 5;
-  gameOver = false;
-}
-
-let frame = 0;
-function update() {
-  if (gameOver) return;
-  frame++;
-
-  dino.vy += 0.6;
-  dino.y += dino.vy;
-  if (dino.y > 150) {
-    dino.y = 150;
-    dino.vy = 0;
-    dino.jumping = false;
-  }
-
-  if (frame % 90 === 0) spawnObstacle();
-
-  obstacles.forEach(o => o.x -= speed);
-  obstacles = obstacles.filter(o => o.x + o.w > 0);
-
-  obstacles.forEach(o => {
-    if (dino.x < o.x + o.w && dino.x + dino.w > o.x &&
-        dino.y < o.y + o.h && dino.y + dino.h > o.y) {
-      gameOver = true;
-    }
-  });
-
-  if (frame % 10 === 0) score++;
-  if (frame % 500 === 0) speed += 0.5;
-
-  document.getElementById('score').textText;
-}
-
-function draw() {
+function drawField() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = '#1e40af';
-  ctx.fillRect(dino.x, dino.y, dino.w, dino.h);
-
-  ctx.fillStyle = '#2563eb';
-  obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
-
-  ctx.strokeStyle = '#93c5fd';
+  // Sky/grass already via CSS background, draw pitch lines
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(50, 250, 550, 130);
   ctx.beginPath();
-  ctx.moveTo(0, 180);
-  ctx.lineTo(canvas.width, 180);
+  ctx.arc(325, 340, 60, Math.PI, 2 * Math.PI);
   ctx.stroke();
 
-  document.getElementById('score').innerText = 'Score: ' + score;
+  // Goal (3D-ish trapezoid perspective)
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(goal.x, goal.y + goal.h);
+  ctx.lineTo(goal.x, goal.y);
+  ctx.lineTo(goal.x + goal.w, goal.y);
+  ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
+  ctx.stroke();
 
-  if (gameOver) {
-    ctx.fillStyle = '#1e293b';
-    ctx.font = '24px sans-serif';
-    ctx.fillText('Game Over - Press SPACE to restart', 100, 100);
+  // net lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    let x = goal.x + (goal.w / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, goal.y);
+    ctx.lineTo(x, goal.y + goal.h);
+    ctx.stroke();
+  }
+  for (let j = 0; j <= 5; j++) {
+    let y = goal.y + (goal.h / 5) * j;
+    ctx.beginPath();
+    ctx.moveTo(goal.x, y);
+    ctx.lineTo(goal.x + goal.w, y);
+    ctx.stroke();
+  }
+
+  // keeper (with dive tilt for 3D feel)
+  ctx.save();
+  ctx.translate(keeper.x, keeper.y);
+  if (keeper.diving) {
+    let tilt = keeper.targetX > 325 ? 0.6 : (keeper.targetX < 325 ? -0.6 : 0);
+    ctx.rotate(tilt);
+  }
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(-keeper.w / 2, -keeper.h / 2, keeper.w, keeper.h);
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.arc(0, -keeper.h / 2 - 8, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // ball shadow (3D depth cue)
+  let shadowScale = 1 - (340 - ball.y) / 340 * 0.7;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, 345, 14 * Math.max(shadowScale, 0.3), 5 * Math.max(shadowScale, 0.3), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ball with size scaling for depth
+  let ballR = ball.r * (1 - (340 - ball.y) / 500);
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, Math.max(ballR, 4), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function animateBall() {
+  if (!ballPath) return;
+  ballProgress += 0.03;
+  if (ballProgress >= 1) {
+    ballProgress = 1;
+    finishShot();
+  }
+  let t = ballProgress;
+  ball.x = ballPath.startX + (ballPath.endX - ballPath.startX) * t;
+  ball.y = ballPath.startY + (ballPath.endY - ballPath.startY) * t;
+
+  // keeper dive animation toward target
+  keeper.x += (keeper.targetX - keeper.x) * 0.15;
+}
+
+function finishShot() {
+  ballAnimating = false;
+  let dx = Math.abs(ball.x - keeper.x);
+  let saved = dx < 45 && ball.y < goal.y + goal.h + 20;
+
+  if (saved) {
+    saves++;
+    statusEl.textContent = "🧤 SAVED! Great reflexes by the keeper.";
+  } else {
+    goals++;
+    statusEl.textContent = "⚽ GOAL! Top corner strike!";
+  }
+
+  round++;
+  updateScore();
+
+  if (round > maxRounds) {
+    gameEnded = true;
+    setTimeout(() => {
+      statusEl.textContent = `Game Over! Final Score - Goals: ${goals}, Saves: ${saves}. Click to play again.`;
+    }, 800);
+  } else {
+    setTimeout(resetBall, 1000);
   }
 }
 
+function resetBall() {
+  ball.x = 325; ball.y = 340;
+  keeper.x = 325; keeper.diving = false;
+  ballPath = null; ballProgress = 0;
+  statusEl.textContent = `Round ${round} - Click the goal to shoot!`;
+}
+
+function updateScore() {
+  scoreEl.textContent = `Goals: ${goals} | Saves: ${saves} | Round: ${Math.min(round, maxRounds)} / ${maxRounds}`;
+}
+
+canvas.addEventListener('click', (e) => {
+  if (ballAnimating) return;
+
+  if (gameEnded) {
+    round = 1; goals = 0; saves = 0; gameEnded = false;
+    updateScore();
+    resetBall();
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  if (clickX < goal.x || clickX > goal.x + goal.w || clickY < goal.y || clickY > goal.y + goal.h) {
+    return;
+  }
+
+  ballAnimating = true;
+  ballPath = { startX: ball.x, startY: ball.y, endX: clickX, endY: clickY };
+  ballProgress = 0;
+
+  // keeper reacts: guesses a target somewhat near the shot, sometimes wrong
+  let guessError = (Math.random() - 0.5) * 120;
+  keeper.targetX = clickX + guessError;
+  keeper.diving = true;
+});
+
 function loop() {
-  update();
-  draw();
+  if (ballAnimating) animateBall();
+  drawField();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
+EOFcat > index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sikka Twins - Penalty Shootout</title>
+<style>
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a, #2563eb);
+    color: white;
+    text-align: center;
+    min-height: 100vh;
+  }
+  header { padding: 40px 20px 10px; }
+  h1 { font-size: 2.5em; margin: 0; letter-spacing: 1px; }
+  p.subtitle { color: #93c5fd; margin-top: 8px; }
+  #gameContainer { margin: 30px auto; max-width: 650px; perspective: 800px; }
+  canvas {
+    background: linear-gradient(#87ceeb, #5fa85f);
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    cursor: crosshair;
+  }
+  #status { margin-top: 15px; font-size: 1.3em; color: #bfdbfe; min-height: 30px; }
+  #score { margin-top: 5px; font-size: 1.1em; color: #fde68a; }
+  .hint { color: #93c5fd; font-size: 0.9em; margin-top: 5px; }
+  footer { margin-top: 40px; padding: 20px; color: #93c5fd; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚽ Sikka Twins Penalty Shootout</h1>
+  <p class="subtitle">Click inside the goal to strike the ball</p>
+</header>
+
+<div id="gameContainer">
+  <canvas id="game" width="650" height="400"></canvas>
+  <div id="status">Round 1 - Click the goal to shoot!</div>
+  <div id="score">Goals: 0 | Saves: 0 | Round: 1 / 5</div>
+  <div class="hint">Aim for the corners, the keeper is smart</div>
+</div>
+
+<footer>Made with 💙 by Veer & Angad</footer>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const scoreEl = document.getElementById('score');
+
+const goal = { x: 150, y: 60, w: 350, h: 150 };
+let round = 1, maxRounds = 5, goals = 0, saves = 0;
+let ballAnimating = false;
+let ball = { x: 325, y: 340, r: 14 };
+let keeper = { x: 325, y: 140, w: 40, h: 60, targetX: 325, diving: false };
+let ballPath = null, ballProgress = 0;
+let gameEnded = false;
+
+function drawField() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Sky/grass already via CSS background, draw pitch lines
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(50, 250, 550, 130);
+  ctx.beginPath();
+  ctx.arc(325, 340, 60, Math.PI, 2 * Math.PI);
+  ctx.stroke();
+
+  // Goal (3D-ish trapezoid perspective)
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(goal.x, goal.y + goal.h);
+  ctx.lineTo(goal.x, goal.y);
+  ctx.lineTo(goal.x + goal.w, goal.y);
+  ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
+  ctx.stroke();
+
+  // net lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    let x = goal.x + (goal.w / 10) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, goal.y);
+    ctx.lineTo(x, goal.y + goal.h);
+    ctx.stroke();
+  }
+  for (let j = 0; j <= 5; j++) {
+    let y = goal.y + (goal.h / 5) * j;
+    ctx.beginPath();
+    ctx.moveTo(goal.x, y);
+    ctx.lineTo(goal.x + goal.w, y);
+    ctx.stroke();
+  }
+
+  // keeper (with dive tilt for 3D feel)
+  ctx.save();
+  ctx.translate(keeper.x, keeper.y);
+  if (keeper.diving) {
+    let tilt = keeper.targetX > 325 ? 0.6 : (keeper.targetX < 325 ? -0.6 : 0);
+    ctx.rotate(tilt);
+  }
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(-keeper.w / 2, -keeper.h / 2, keeper.w, keeper.h);
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.arc(0, -keeper.h / 2 - 8, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // ball shadow (3D depth cue)
+  let shadowScale = 1 - (340 - ball.y) / 340 * 0.7;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, 345, 14 * Math.max(shadowScale, 0.3), 5 * Math.max(shadowScale, 0.3), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ball with size scaling for depth
+  let ballR = ball.r * (1 - (340 - ball.y) / 500);
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, Math.max(ballR, 4), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function animateBall() {
+  if (!ballPath) return;
+  ballProgress += 0.03;
+  if (ballProgress >= 1) {
+    ballProgress = 1;
+    finishShot();
+  }
+  let t = ballProgress;
+  ball.x = ballPath.startX + (ballPath.endX - ballPath.startX) * t;
+  ball.y = ballPath.startY + (ballPath.endY - ballPath.startY) * t;
+
+  // keeper dive animation toward target
+  keeper.x += (keeper.targetX - keeper.x) * 0.15;
+}
+
+function finishShot() {
+  ballAnimating = false;
+  let dx = Math.abs(ball.x - keeper.x);
+  let saved = dx < 45 && ball.y < goal.y + goal.h + 20;
+
+  if (saved) {
+    saves++;
+    statusEl.textContent = "🧤 SAVED! Great reflexes by the keeper.";
+  } else {
+    goals++;
+    statusEl.textContent = "⚽ GOAL! Top corner strike!";
+  }
+
+  round++;
+  updateScore();
+
+  if (round > maxRounds) {
+    gameEnded = true;
+    setTimeout(() => {
+      statusEl.textContent = `Game Over! Final Score - Goals: ${goals}, Saves: ${saves}. Click to play again.`;
+    }, 800);
+  } else {
+    setTimeout(resetBall, 1000);
+  }
+}
+
+function resetBall() {
+  ball.x = 325; ball.y = 340;
+  keeper.x = 325; keeper.diving = false;
+  ballPath = null; ballProgress = 0;
+  statusEl.textContent = `Round ${round} - Click the goal to shoot!`;
+}
+
+function updateScore() {
+  scoreEl.textContent = `Goals: ${goals} | Saves: ${saves} | Round: ${Math.min(round, maxRounds)} / ${maxRounds}`;
+}
+
+canvas.addEventListener('click', (e) => {
+  if (ballAnimating) return;
+
+  if (gameEnded) {
+    round = 1; goals = 0; saves = 0; gameEnded = false;
+    updateScore();
+    resetBall();
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  if (clickX < goal.x || clickX > goal.x + goal.w || clickY < goal.y || clickY > goal.y + goal.h) {
+    return;
+  }
+
+  ballAnimating = true;
+  ballPath = { startX: ball.x, startY: ball.y, endX: clickX, endY: clickY };
+  ballProgress = 0;
+
+  // keeper reacts: guesses a target somewhat near the shot, sometimes wrong
+  let guessError = (Math.random() - 0.5) * 120;
+  keeper.targetX = clickX + guessError;
+  keeper.diving = true;
+});
+
+function loop() {
+  if (ballAnimating) animateBall();
+  drawField();
   requestAnimationFrame(loop);
 }
 loop();
