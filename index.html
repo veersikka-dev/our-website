@@ -1,10 +1,166 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Our Website</title>
+<meta charset="UTF-8">
+<title>Sikka Twins</title>
+<style>
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a, #2563eb);
+    color: white;
+    text-align: center;
+    min-height: 100vh;
+  }
+  header {
+    padding: 40px 20px 10px;
+  }
+  h1 {
+    font-size: 2.5em;
+    margin: 0;
+    letter-spacing: 1px;
+  }
+  p.subtitle {
+    color: #93c5fd;
+    margin-top: 8px;
+  }
+  #gameContainer {
+    margin: 30px auto;
+    max-width: 600px;
+  }
+  canvas {
+    background: #dbeafe;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #score {
+    margin-top: 10px;
+    font-size: 1.2em;
+    color: #bfdbfe;
+  }
+  .hint {
+    color: #93c5fd;
+    font-size: 0.9em;
+    margin-top: 5px;
+  }
+  footer {
+    margin-top: 40px;
+    padding: 20px;
+    color: #93c5fd;
+    font-size: 0.9em;
+  }
+</style>
 </head>
 <body>
-  <h1>Hello from the Sikka twins!</h1>
-  <p>This is our first website, built together.</p>
+
+<header>
+  <h1>🚀 Hello from the Sikka Twins!</h1>
+  <p class="subtitle">This is our first website, built together.</p>
+</header>
+
+<div id="gameContainer">
+  <canvas id="game" width="600" height="200"></canvas>
+  <div id="score">Score: 0</div>
+  <div class="hint">Press SPACE to jump</div>
+</div>
+
+<footer>Made with 💙 by Veer & Angad</footer>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let dino = { x: 50, y: 150, w: 30, h: 30, vy: 0, jumping: false };
+let obstacles = [];
+let score = 0;
+let gameOver = false;
+let speed = 5;
+
+function spawnObstacle() {
+  obstacles.push({ x: canvas.width, y: 160, w: 20, h: 20 });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    if (gameOver) { resetGame(); return; }
+    if (!dino.jumping) {
+      dino.vy = -10;
+      dino.jumping = true;
+    }
+  }
+});
+
+function resetGame() {
+  dino.y = 150;
+  dino.vy = 0;
+  dino.jumping = false;
+  obstacles = [];
+  score = 0;
+  speed = 5;
+  gameOver = false;
+}
+
+let frame = 0;
+function update() {
+  if (gameOver) return;
+  frame++;
+
+  dino.vy += 0.6;
+  dino.y += dino.vy;
+  if (dino.y > 150) {
+    dino.y = 150;
+    dino.vy = 0;
+    dino.jumping = false;
+  }
+
+  if (frame % 90 === 0) spawnObstacle();
+
+  obstacles.forEach(o => o.x -= speed);
+  obstacles = obstacles.filter(o => o.x + o.w > 0);
+
+  obstacles.forEach(o => {
+    if (dino.x < o.x + o.w && dino.x + dino.w > o.x &&
+        dino.y < o.y + o.h && dino.y + dino.h > o.y) {
+      gameOver = true;
+    }
+  });
+
+  if (frame % 10 === 0) score++;
+  if (frame % 500 === 0) speed += 0.5;
+
+  document.getElementById('score').textText;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#1e40af';
+  ctx.fillRect(dino.x, dino.y, dino.w, dino.h);
+
+  ctx.fillStyle = '#2563eb';
+  obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
+
+  ctx.strokeStyle = '#93c5fd';
+  ctx.beginPath();
+  ctx.moveTo(0, 180);
+  ctx.lineTo(canvas.width, 180);
+  ctx.stroke();
+
+  document.getElementById('score').innerText = 'Score: ' + score;
+
+  if (gameOver) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = '24px sans-serif';
+    ctx.fillText('Game Over - Press SPACE to restart', 100, 100);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
 </body>
 </html>
